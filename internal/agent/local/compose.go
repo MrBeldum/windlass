@@ -151,7 +151,7 @@ type composeConfig struct {
 			Target int `json:"target"`
 		} `json:"ports"`
 		Labels   map[string]string `json:"labels"`
-		MemLimit int64             `json:"mem_limit"`
+		MemLimit byteValue         `json:"mem_limit"`
 		CPUs     numberValue       `json:"cpus"`
 	} `json:"services"`
 }
@@ -175,6 +175,33 @@ func (n *numberValue) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// Compose emits mem_limit as a quoted byte count rather than a number, so it
+// needs the same tolerance as cpus. Without it every compose file that sets a
+// memory limit fails to parse and the deployment stops.
+type byteValue int64
+
+func (b *byteValue) UnmarshalJSON(data []byte) error {
+	if len(data) > 0 && data[0] == '"' {
+		text := strings.Trim(string(data), `"`)
+		if text == "" {
+			*b = 0
+			return nil
+		}
+		parsed, err := strconv.ParseInt(text, 10, 64)
+		if err != nil {
+			return err
+		}
+		*b = byteValue(parsed)
+		return nil
+	}
+	var value int64
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*b = byteValue(value)
+	return nil
+}
+
 func (c composeLocal) Config(ctx context.Context, project string) (agent.ResolvedConfig, error) {
 	cmd, err := c.cmd(ctx, project, "config", "--format", "json")
 	if err != nil {
@@ -184,7 +211,7 @@ func (c composeLocal) Config(ctx context.Context, project string) (agent.Resolve
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		// compose config failing means the file is invalid — surface its
+		// compose config failing means the file is invalid, surface its
 		// message, which is the useful part.
 		return agent.ResolvedConfig{}, fmt.Errorf("compose file invalid: %s", strings.TrimSpace(stderr.String()))
 	}
@@ -205,7 +232,7 @@ func (c composeLocal) Config(ctx context.Context, project string) (agent.Resolve
 			ports = append(ports, published.Target)
 		}
 		resolved.Services[name] = agent.ResolvedService{
-			Image: svc.Image, ContainerPorts: ports, MemoryLimit: svc.MemLimit, CPULimit: float64(svc.CPUs),
+			Image: svc.Image, ContainerPorts: ports, MemoryLimit: int64(svc.MemLimit), CPULimit: float64(svc.CPUs),
 			Build: len(svc.Build) > 0 && string(svc.Build) != "null",
 		}
 		if rawURL := strings.TrimSpace(svc.Labels["windlass.health.url"]); rawURL != "" {

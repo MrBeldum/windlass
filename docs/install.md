@@ -5,7 +5,7 @@
 Run on a Linux x86_64 or arm64 server:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Sulaiman-Dauda/windlass/main/install/install.sh | sudo sh
+curl -fsSL https://get.windlass.run | sudo sh
 ```
 
 The installer:
@@ -20,6 +20,41 @@ The installer:
 
 Supported flags are `--yes`, `--version vX.Y.Z`, `--no-caddy`, `--no-docker`, and
 `--binary PATH` (local/CI installation).
+
+## Verifying what you are about to run
+
+The install command pipes a script from the internet into `sudo sh`, so it is reasonable
+to want to look first. The script is short and plain:
+
+```sh
+curl -fsSL https://get.windlass.run -o install.sh
+less install.sh
+sudo sh install.sh
+```
+
+Every release is also signed with GitHub build provenance, which ties those exact bytes
+to the workflow and commit that produced them. This is worth more than the published
+checksums on their own: `checksums.txt` ships in the same release as the binaries, so
+anyone able to rewrite one could rewrite the other. The attestation is stored outside the
+release, where a release write cannot reach it.
+
+To check a binary before installing it:
+
+```sh
+gh release download v0.37 --pattern 'windlass-linux-amd64'
+gh attestation verify windlass-linux-amd64 --repo Sulaiman-Dauda/windlass
+```
+
+And the container image, addressed by digest rather than by a tag that can move:
+
+```sh
+gh attestation verify oci://ghcr.io/sulaiman-dauda/windlass:latest \
+  --repo Sulaiman-Dauda/windlass
+```
+
+Verification is silent on success and exits 0, so check the exit code rather than looking
+for output. A binary that has been altered by even one byte fails with a lookup error for
+its digest.
 
 ## First run and panel HTTPS
 
